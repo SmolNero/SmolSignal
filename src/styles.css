@@ -208,6 +208,14 @@ li,
   letter-spacing: -0.04em;
 }
 
+.compact-heading {
+  margin-bottom: 0.5rem;
+}
+
+.compact-heading h3 {
+  margin: 0.15rem 0 0;
+}
+
 .horizontal {
   display: flex;
   align-items: center;
@@ -247,6 +255,35 @@ li,
   background: rgba(117, 245, 215, 0.1);
 }
 
+.photo-box,
+.signal-identity-card,
+.mode-card,
+.serial-status-card,
+.knowledge-card,
+.community-card {
+  border: 1px solid rgba(184, 255, 240, 0.13);
+  border-radius: 1.25rem;
+  padding: 1rem;
+  background: rgba(255, 255, 255, 0.055);
+}
+
+.photo-box {
+  margin-top: 1rem;
+}
+
+.photo-preview {
+  display: block;
+  width: 100%;
+  max-height: 18rem;
+  object-fit: cover;
+  border-radius: 1rem;
+  margin-top: 0.75rem;
+}
+
+.inline-button {
+  margin-top: 0.75rem;
+}
+
 .risk-badge {
   display: inline-flex;
   align-items: center;
@@ -281,6 +318,35 @@ li,
   border-radius: 1.25rem;
   padding: 1rem;
   background: rgba(255, 255, 255, 0.055);
+}
+
+.signal-identity-card {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  background:
+    linear-gradient(135deg, rgba(117, 245, 215, 0.16), rgba(127, 111, 255, 0.09)),
+    rgba(255, 255, 255, 0.055);
+}
+
+.signal-identity-card h3 {
+  margin: 0.25rem 0;
+  font-size: clamp(1.7rem, 4vw, 2.8rem);
+  letter-spacing: -0.05em;
+}
+
+.signal-identity-card p {
+  margin: 0;
+  color: #b9d8d2;
+}
+
+.report-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 1rem 0;
 }
 
 .readout-card h3 {
@@ -342,8 +408,86 @@ li,
   gap: 1rem;
 }
 
+.mode-card,
+.rag-panel,
+.community-panel {
+  margin-top: 1.25rem;
+}
+
+.mode-enabled {
+  border-color: rgba(255, 211, 107, 0.3);
+  background: rgba(255, 211, 107, 0.08);
+}
+
+.knowledge-card,
+.community-card {
+  margin-top: 0.75rem;
+}
+
+.knowledge-card strong,
+.community-card strong,
+.serial-status-card strong {
+  display: block;
+  color: #f7fffd;
+}
+
+.knowledge-card span,
+.community-card small {
+  color: #75f5d7;
+  font-size: 0.8rem;
+}
+
+.community-card {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 1rem;
+  align-items: center;
+}
+
+.community-actions {
+  display: flex;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .ir-builder {
   margin-top: 1.5rem;
+}
+
+.magic-console {
+  margin-top: 1.5rem;
+}
+
+.serial-status-card p {
+  color: #b9d8d2;
+  line-height: 1.65;
+}
+
+.pipeline-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.pipeline-list div {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  border-radius: 1rem;
+  padding: 0.85rem;
+  background: rgba(255, 255, 255, 0.055);
+  color: #d9fffa;
+}
+
+.pipeline-list span {
+  display: inline-grid;
+  place-items: center;
+  width: 1.8rem;
+  height: 1.8rem;
+  border-radius: 50%;
+  color: #061311;
+  background: #75f5d7;
+  font-weight: 900;
 }
 
 .ai-panel {
@@ -441,8 +585,17 @@ li,
   .two-columns,
   .split-list,
   .button-row,
-  .ai-grid {
+  .ai-grid,
+  .community-card {
     grid-template-columns: 1fr;
+  }
+
+  .signal-identity-card {
+    flex-direction: column;
+  }
+
+  .community-actions {
+    justify-content: flex-start;
   }
 
   .hero-copy h1 {

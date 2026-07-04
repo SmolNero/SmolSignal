@@ -5,10 +5,27 @@ import {
   type AiExplanation,
   type AiProviderConfig,
 } from "./lib/aiClient";
-import { buildIrFile, safeIrProtocols } from "./lib/irBuilder";
+import { exportCommunityProfile, findCommunityMatches, type CommunityProfile } from "./lib/communityLibrary";
+import { fingerprintAnalysis, type PhotoContext } from "./lib/fingerprintEngine";
+import { buildIrFile, parseIrButtonsFromCapture, safeIrProtocols } from "./lib/irBuilder";
+import { buildRagQuery, searchLocalKnowledge } from "./lib/localRag";
+import { buildPassiveSensorGuide } from "./lib/passiveSensor";
+import { buildJsonReport, buildMarkdownReport } from "./lib/reportExporter";
 import { analyzeCapture } from "./lib/safetyPolicy";
 import { samples } from "./lib/samples";
 import type { IrButton, SafetyLevel } from "./lib/types";
+
+interface SerialPortLike {
+  open(options: { baudRate: number }): Promise<void>;
+  close(): Promise<void>;
+  getInfo?: () => { usbVendorId?: number; usbProductId?: number };
+}
+
+type NavigatorWithSerial = Navigator & {
+  serial?: {
+    requestPort(): Promise<SerialPortLike>;
+  };
+};
 
 const emptyButton: IrButton = {
   name: "Power",
@@ -60,8 +77,18 @@ export default function App() {
   const [aiExplanation, setAiExplanation] = useState<AiExplanation>();
   const [aiError, setAiError] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
+  const [photoContext, setPhotoContext] = useState<PhotoContext>();
+  const [photoPreview, setPhotoPreview] = useState("");
+  const [irImportMessage, setIrImportMessage] = useState("");
+  const [serialPort, setSerialPort] = useState<SerialPortLike>();
+  const [serialStatus, setSerialStatus] = useState("Not connected");
+  const [serialLog, setSerialLog] = useState("Use Chrome or Edge on desktop for Web Serial. Connect Flipper over USB, then click Connect.");
 
   const analysis = captureText.trim() ? analyzeCapture(captureText, fileName, goal) : undefined;
+  const fingerprint = analysis ? fingerprintAnalysis(analysis, goal, photoContext) : undefined;
+  const passiveGuide = analysis && fingerprint ? buildPassiveSensorGuide(analysis, fingerprint) : undefined;
+  const ragResults = analysis && fingerprint ? searchLocalKnowledge(buildRagQuery(analysis, fingerprint, goal, photoContext), 3) : [];
+  const communityMatches = analysis && fingerprint ? findCommunityMatches(analysis, fingerprint, goal) : [];
   const buildResult = buildIrFile(remoteName, buttons);
 
   async function loadFile(file?: File) {
@@ -69,10 +96,32 @@ export default function App() {
     const text = await file.text();
     setCaptureText(text);
     setFileName(file.name);
+    setAiExplanation(undefined);
+    setAiError("");
+  }
+
+  async function loadPhoto(file?: File) {
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      setPhotoContext({ fileName: file.name, width: image.naturalWidth, height: image.naturalHeight, notes: photoContext?.notes ?? "" });
+      setPhotoPreview(url);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      setPhotoContext(undefined);
+      setPhotoPreview("");
+    };
+    image.src = url;
   }
 
   function onFileChange(event: ChangeEvent<HTMLInputElement>) {
     void loadFile(event.target.files?.[0]);
+  }
+
+  function onPhotoChange(event: ChangeEvent<HTMLInputElement>) {
+    void loadPhoto(event.target.files?.[0]);
   }
 
   function updateButton(index: number, patch: Partial<IrButton>) {
@@ -90,11 +139,91 @@ export default function App() {
     setGoal(sample.goal);
     setAiExplanation(undefined);
     setAiError("");
+    setIrImportMessage("");
   }
 
   function copyIrFile() {
     if (!buildResult.ok) return;
     void navigator.clipboard.writeText(buildResult.content);
+  }
+
+  function importIrButtonsFromCapture() {
+    const parsed = parseIrButtonsFromCapture(captureText);
+    if (!parsed.buttons.length) {
+      setIrImportMessage(parsed.errors.length ? parsed.errors.join(" ") : "No parsed IR buttons found in the current capture.");
+      return;
+    }
+    setButtons(parsed.buttons);
+    setRemoteName(fileName.replace(/\.[^.]+$/, "") || "Imported_IR_Remote");
+    setIrImportMessage(`Imported ${parsed.buttons.length} IR button${parsed.buttons.length === 1 ? "" : "s"}.`);
+  }
+
+  function loadCommunityProfile(profile: CommunityProfile) {
+    if (profile.buttons?.length) {
+      setButtons(profile.buttons);
+      setRemoteName(profile.name);
+      setIrImportMessage(`Loaded safe community profile: ${profile.name}. Replace placeholder commands with owned captures if needed.`);
+      return;
+    }
+    if (profile.note) {
+      void navigator.clipboard.writeText(profile.note);
+      setIrImportMessage(`Copied note for ${profile.name}.`);
+    }
+  }
+
+  function downloadAnalysisReport(format: "md" | "json") {
+    if (!analysis || !fingerprint || !passiveGuide) return;
+    const reportInput = {
+      analysis,
+      fingerprint,
+      passiveGuide,
+      ragResults,
+      communityMatches,
+      aiExplanation,
+      photo: photoContext,
+      userGoal: goal,
+    };
+    const content = format === "md" ? buildMarkdownReport(reportInput) : buildJsonReport(reportInput);
+    downloadTextFile(`smolsignal-report-${fingerprint.signature}.${format}`, content);
+  }
+
+  function downloadCommunityProfile(profile: CommunityProfile) {
+    downloadTextFile(`${profile.id}.smolsignal-profile.json`, exportCommunityProfile(profile));
+  }
+
+  async function connectFlipperSerial() {
+    const nav = navigator as NavigatorWithSerial;
+    if (!nav.serial) {
+      setSerialStatus("Web Serial not supported");
+      setSerialLog("Use Chrome or Edge on desktop. Safari and Firefox do not currently support Web Serial.");
+      return;
+    }
+
+    try {
+      const port = await nav.serial.requestPort();
+      await port.open({ baudRate: 115200 });
+      const info = port.getInfo?.();
+      setSerialPort(port);
+      setSerialStatus("Connected over Web Serial");
+      setSerialLog(
+        `Connected. Vendor: ${info?.usbVendorId ?? "unknown"}; Product: ${info?.usbProductId ?? "unknown"}. Use this panel for safe connection status while importing/exporting files through Flipper storage workflows.`,
+      );
+    } catch (error) {
+      setSerialStatus("Connection failed");
+      setSerialLog(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  async function disconnectFlipperSerial() {
+    if (!serialPort) return;
+    try {
+      await serialPort.close();
+      setSerialPort(undefined);
+      setSerialStatus("Disconnected");
+      setSerialLog("Serial port closed.");
+    } catch (error) {
+      setSerialLog(error instanceof Error ? error.message : String(error));
+    }
   }
 
   function updateAiConfig(patch: Partial<AiProviderConfig>) {
@@ -143,7 +272,11 @@ export default function App() {
     setAiExplanation(undefined);
 
     try {
-      const explanation = await generateAiExplanation(analysis, goal, aiConfig);
+      const explanation = await generateAiExplanation(analysis, goal, aiConfig, {
+        fingerprint,
+        photo: photoContext,
+        ragResults,
+      });
       setAiExplanation(explanation);
     } catch (error) {
       setAiError(error instanceof Error ? error.message : String(error));
@@ -168,6 +301,9 @@ export default function App() {
             </a>
             <a href="#ir-builder" className="secondary-link">
               Build an IR file
+            </a>
+            <a href="#magic-console" className="secondary-link">
+              Connect Flipper
             </a>
           </div>
         </div>
@@ -203,6 +339,43 @@ export default function App() {
             onChange={(event) => setGoal(event.target.value)}
             placeholder="Example: build a replacement remote for my TV"
           />
+
+          <div className="photo-box">
+            <div className="section-heading compact-heading">
+              <p className="eyebrow">Photo + capture</p>
+              <h3>Add device context</h3>
+            </div>
+            <input type="file" accept="image/*" onChange={onPhotoChange} />
+            {photoPreview ? <img className="photo-preview" src={photoPreview} alt="Device context preview" /> : null}
+            {photoContext ? (
+              <>
+                <p className="muted">
+                  {photoContext.fileName} · {photoContext.width}x{photoContext.height}
+                </p>
+                <label className="field-label" htmlFor="photoNotes">
+                  What does the photo show?
+                </label>
+                <input
+                  id="photoNotes"
+                  value={photoContext.notes}
+                  onChange={(event) => setPhotoContext({ ...photoContext, notes: event.target.value })}
+                  placeholder="Example: hotel AC unit, Samsung TV, LED strip controller"
+                />
+                <button
+                  type="button"
+                  className="ghost-button inline-button"
+                  onClick={() => {
+                    setPhotoContext(undefined);
+                    setPhotoPreview("");
+                  }}
+                >
+                  Remove photo
+                </button>
+              </>
+            ) : (
+              <p className="muted">Optional. SmolSignal uses image metadata and your notes, not raw image data, unless you choose to send context to an AI provider.</p>
+            )}
+          </div>
 
           <div
             className={`drop-zone ${dropActive ? "drop-active" : ""}`}
@@ -248,6 +421,17 @@ export default function App() {
 
           {analysis ? (
             <>
+              {fingerprint ? (
+                <div className="signal-identity-card">
+                  <div>
+                    <p className="eyebrow">Shazam for signals</p>
+                    <h3>{fingerprint.label}</h3>
+                    <p>{Math.round(fingerprint.confidence * 100)}% confidence · {fingerprint.signature}</p>
+                  </div>
+                  <RiskBadge level={fingerprint.safety} />
+                </div>
+              ) : null}
+
               <div className="readout-card">
                 <h3>{analysis.summary}</h3>
                 <p>{analysis.plainEnglish}</p>
@@ -270,7 +454,44 @@ export default function App() {
                   <span>Fields</span>
                   <strong>{analysis.parsed.fieldEntries.length}</strong>
                 </div>
+                {fingerprint ? (
+                  <>
+                    <div>
+                      <span>Frequency band</span>
+                      <strong>{fingerprint.features.frequencyBand}</strong>
+                    </div>
+                    <div>
+                      <span>Modulation</span>
+                      <strong>{fingerprint.features.modulation}</strong>
+                    </div>
+                  </>
+                ) : null}
               </div>
+
+              {fingerprint ? (
+                <div className="list-block">
+                  <h3>Fingerprint evidence</h3>
+                  <ul>
+                    {fingerprint.evidence.map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                  {fingerprint.warnings.length ? (
+                    <div className="warning-text">
+                      {fingerprint.warnings.map((warning) => (
+                        <p key={warning}>{warning}</p>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {fingerprint && passiveGuide ? (
+                <div className="report-actions">
+                  <button type="button" onClick={() => downloadAnalysisReport("md")}>Download Markdown report</button>
+                  <button type="button" onClick={() => downloadAnalysisReport("json")}>Download JSON report</button>
+                </div>
+              ) : null}
 
               <div className="list-block">
                 <h3>Findings</h3>
@@ -313,6 +534,75 @@ export default function App() {
                   </ul>
                 </div>
               </div>
+
+              {passiveGuide ? (
+                <div className={`mode-card ${passiveGuide.enabled ? "mode-enabled" : ""}`}>
+                  <div className="section-heading horizontal">
+                    <div>
+                      <p className="eyebrow">Passive sensor mode</p>
+                      <h3>{passiveGuide.title}</h3>
+                    </div>
+                    <span className="risk-badge risk-caution">No transmit</span>
+                  </div>
+                  <p>{passiveGuide.summary}</p>
+                  <div className="split-list">
+                    <div>
+                      <h3>Observe</h3>
+                      <ul>
+                        {passiveGuide.observations.map((item) => (
+                          <li key={item}>{item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                    <div>
+                      <h3>Safe steps</h3>
+                      <ul>
+                        {passiveGuide.safeSteps.map((item) => (
+                          <li key={item}>{item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {ragResults.length ? (
+                <div className="list-block rag-panel">
+                  <p className="eyebrow">Local vector/RAG</p>
+                  <h3>Relevant built-in knowledge</h3>
+                  {ragResults.map((result) => (
+                    <div className="knowledge-card" key={result.document.id}>
+                      <strong>{result.document.title}</strong>
+                      <span>score {result.score}</span>
+                      <p>{result.snippet}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
+              {communityMatches.length ? (
+                <div className="list-block community-panel">
+                  <p className="eyebrow">Safe community library</p>
+                  <h3>Matching safe profiles</h3>
+                  {communityMatches.map((match) => (
+                    <div className="community-card" key={match.profile.id}>
+                      <div>
+                        <strong>{match.profile.name}</strong>
+                        <p>{match.profile.description}</p>
+                        <small>{match.reason}</small>
+                      </div>
+                      <div className="community-actions">
+                        <button type="button" onClick={() => loadCommunityProfile(match.profile)}>
+                          {match.profile.buttons?.length ? "Load" : "Copy note"}
+                        </button>
+                        <button type="button" className="ghost-button" onClick={() => downloadCommunityProfile(match.profile)}>
+                          Export
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
 
               <div className="ai-panel" id="ai-explainer">
                 <div className="section-heading horizontal">
@@ -437,6 +727,45 @@ export default function App() {
         </div>
       </section>
 
+      <section id="magic-console" className="grid two-columns magic-console">
+        <div className="panel">
+          <div className="section-heading">
+            <p className="eyebrow">Phase 3</p>
+            <h2>Web Serial Flipper connection</h2>
+          </div>
+          <p className="muted">
+            Connect status for supported browsers. SmolSignal does not perform firmware updates, cloning, replay, or bypass
+            actions over serial.
+          </p>
+          <div className="serial-status-card">
+            <strong>{serialStatus}</strong>
+            <p>{serialLog}</p>
+          </div>
+          <div className="builder-actions">
+            <button type="button" onClick={connectFlipperSerial} disabled={Boolean(serialPort)}>
+              Connect via Web Serial
+            </button>
+            <button type="button" className="ghost-button" onClick={disconnectFlipperSerial} disabled={!serialPort}>
+              Disconnect
+            </button>
+          </div>
+        </div>
+
+        <div className="panel">
+          <div className="section-heading">
+            <p className="eyebrow">Magic UX</p>
+            <h2>Signal identity pipeline</h2>
+          </div>
+          <div className="pipeline-list">
+            <div><span>1</span> Parse Flipper capture</div>
+            <div><span>2</span> Match protocol/device database</div>
+            <div><span>3</span> Fingerprint signal shape</div>
+            <div><span>4</span> Add photo context and local RAG</div>
+            <div><span>5</span> Generate safe reports, profiles, and AI explanations</div>
+          </div>
+        </div>
+      </section>
+
       <section id="ir-builder" className="panel ir-builder">
         <div className="section-heading horizontal">
           <div>
@@ -497,6 +826,9 @@ export default function App() {
         </div>
 
         <div className="builder-actions">
+          <button type="button" onClick={importIrButtonsFromCapture} disabled={analysis?.parsed.domain !== "infrared"}>
+            Import current IR capture
+          </button>
           <button type="button" onClick={() => setButtons((current) => [...current, { ...emptyButton, name: `Button_${current.length + 1}` }])}>
             Add button
           </button>
@@ -512,6 +844,8 @@ export default function App() {
             Download .ir
           </button>
         </div>
+
+        {irImportMessage ? <p className="warning-text">{irImportMessage}</p> : null}
 
         {buildResult.errors.length ? (
           <div className="error-box">

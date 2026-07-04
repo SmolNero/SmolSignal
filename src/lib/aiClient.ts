@@ -1,3 +1,5 @@
+import type { PhotoContext, SignalFingerprint } from "./fingerprintEngine";
+import type { RagResult } from "./localRag";
 import type { AnalysisResult, SafetyDecision } from "./types";
 
 export type AiProvider = "ollama" | "openai-compatible" | "bridge";
@@ -21,6 +23,12 @@ export interface AiExplanation {
   text: string;
   provider: AiProvider;
   model: string;
+}
+
+export interface AiExtraContext {
+  fingerprint?: SignalFingerprint;
+  photo?: PhotoContext;
+  ragResults?: RagResult[];
 }
 
 type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
@@ -89,8 +97,40 @@ function decisionInstruction(decision: SafetyDecision) {
   return "The deterministic safety gate says ALLOW. Stay within the listed safe actions. For this MVP, generated workflows must remain limited to benign learning, documentation, GPIO safety notes, and consumer infrared remote organization.";
 }
 
-export function buildAiMessages(analysis: AnalysisResult, userGoal: string): AiMessage[] {
+function sanitizeExtraContext(context: AiExtraContext = {}) {
+  return {
+    fingerprint: context.fingerprint
+      ? {
+          signature: context.fingerprint.signature,
+          label: context.fingerprint.label,
+          category: context.fingerprint.category,
+          confidence: context.fingerprint.confidence,
+          safety: context.fingerprint.safety,
+          passiveMode: context.fingerprint.passiveMode,
+          evidence: context.fingerprint.evidence,
+          warnings: context.fingerprint.warnings,
+          features: context.fingerprint.features,
+        }
+      : undefined,
+    photo: context.photo
+      ? {
+          fileName: context.photo.fileName,
+          width: context.photo.width,
+          height: context.photo.height,
+          notes: context.photo.notes,
+        }
+      : undefined,
+    localKnowledge: context.ragResults?.map((result) => ({
+      title: result.document.title,
+      score: result.score,
+      snippet: result.snippet,
+    })),
+  };
+}
+
+export function buildAiMessages(analysis: AnalysisResult, userGoal: string, context: AiExtraContext = {}): AiMessage[] {
   const sanitized = sanitizeAnalysisForPrompt(analysis);
+  const extra = sanitizeExtraContext(context);
 
   return [
     {
@@ -111,6 +151,8 @@ export function buildAiMessages(analysis: AnalysisResult, userGoal: string): AiM
         decisionInstruction(analysis.decision),
         "Sanitized SmolSignal analysis JSON:",
         JSON.stringify(sanitized, null, 2),
+        "Additional safe context JSON:",
+        JSON.stringify(extra, null, 2),
         "Write a concise, beginner-friendly explanation that follows the safety gate exactly.",
       ].join("\n\n"),
     },
@@ -160,6 +202,7 @@ export async function generateAiExplanation(
   analysis: AnalysisResult,
   userGoal: string,
   config: AiProviderConfig,
+  context: AiExtraContext = {},
   fetchImpl: FetchLike = fetch,
 ): Promise<AiExplanation> {
   const model = config.model.trim();
@@ -168,7 +211,7 @@ export async function generateAiExplanation(
   if (!model) throw new Error("Choose a model before asking the AI explainer.");
   if (!endpoint) throw new Error("Choose an endpoint before asking the AI explainer.");
 
-  const messages = buildAiMessages(analysis, userGoal);
+  const messages = buildAiMessages(analysis, userGoal, context);
 
   if (config.provider === "ollama") {
     const response = await fetchImpl(endpoint, {

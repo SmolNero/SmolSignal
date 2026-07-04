@@ -63,7 +63,7 @@ describe("generateAiExplanation", () => {
     const analysis = analyzeCapture("Filetype: IR signals file\nprotocol: NEC", "remote.ir", "explain");
     const requests: RequestInit[] = [];
 
-    const result = await generateAiExplanation(analysis, "explain", baseConfig, async (_input, init) => {
+    const result = await generateAiExplanation(analysis, "explain", baseConfig, {}, async (_input, init) => {
       requests.push(init ?? {});
       return jsonResponse({ choices: [{ message: { content: "Plain English: safe IR." } }] });
     });
@@ -80,7 +80,7 @@ describe("generateAiExplanation", () => {
       endpoint: aiEndpointPresets.ollama,
     };
 
-    const result = await generateAiExplanation(analysis, "explain", config, async () => {
+    const result = await generateAiExplanation(analysis, "explain", config, {}, async () => {
       return jsonResponse({ message: { content: "Ollama says safe." } });
     });
 
@@ -96,7 +96,7 @@ describe("generateAiExplanation", () => {
       endpoint: aiEndpointPresets.bridge,
     };
 
-    const result = await generateAiExplanation(analysis, "explain", config, async () => {
+    const result = await generateAiExplanation(analysis, "explain", config, {}, async () => {
       return jsonResponse({ text: "Bridge says safe.", provider: "deepseek", model: "test-model" });
     });
 

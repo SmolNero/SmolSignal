@@ -10,6 +10,11 @@ This is not a bypass or cloning tool. The safety engine blocks car key cloning, 
 - Detects likely signal domain: infrared, Sub-GHz, NFC, RFID, iButton, GPIO, BLE, or unknown.
 - Explains the capture in beginner-friendly language with a deterministic offline readout.
 - Optionally asks real AI models through Ollama, GPT/OpenAI, DeepSeek, Qwen/DashScope, llama.cpp, vLLM, or any OpenAI-compatible endpoint.
+- Fingerprints captures with a Shazam-style identity card, confidence score, signature, evidence, and warnings.
+- Uses a local protocol/device category database to distinguish safe consumer IR, passive sensors, access credentials, vehicle/security signals, GPIO labs, and unknown RF.
+- Provides passive sensor mode for safe RF documentation without replay/transmit steps.
+- Adds local vector/RAG search over built-in safety and protocol notes.
+- Supports photo context, Web Serial connection status, safe community profile matches, and exportable reports.
 - Classifies the workflow as `safe`, `explain-only`, `blocked`, or `unknown`.
 - Generates Flipper-compatible `.ir` files for safe consumer infrared remotes.
 - Keeps the safety gate deterministic. The AI model is an explainer, not the permission system.
@@ -76,8 +81,10 @@ npm run ai:bridge
 2. Drag the file into SmolSignal or paste the text contents.
 3. Describe your intent in the "What are you trying to do?" field.
 4. Review the safety classification, plain-English summary, findings, and next steps.
-5. If it is a safe consumer IR workflow, use the IR Builder to create a `.ir` file.
-6. Put the generated `.ir` file on your Flipper SD card under the infrared folder.
+5. Review the Shazam-style fingerprint, local RAG references, passive mode, and safe community matches.
+6. Export a Markdown or JSON report if you want a durable lab note.
+7. If it is a safe consumer IR workflow, use the IR Builder to create a `.ir` file.
+8. Put the generated `.ir` file on your Flipper SD card under the infrared folder.
 
 ## Phase 1 AI: Real Model Support
 
@@ -209,6 +216,122 @@ Do not put cloud API keys into a public GitHub Pages demo. Use local Ollama, a l
 SMOLSIGNAL_ALLOWED_ORIGINS=https://YOUR_USERNAME.github.io npm run ai:bridge
 ```
 
+## Phase 2: Useful Signal Intelligence
+
+### Capture Fingerprinting
+
+Every analyzed capture gets a deterministic fingerprint:
+
+- Likely category.
+- Confidence score.
+- Stable `smol-*` signature.
+- Protocol/device evidence.
+- Frequency band and modulation/preset summary.
+- Raw pulse/value statistics when available.
+- Safety warnings.
+
+The fingerprint is intentionally conservative. A frequency band alone cannot classify a capture as safe or blocked; stronger protocol, text, and safety-gate evidence are required.
+
+### Protocol/Device Category Database
+
+SmolSignal includes a local protocol knowledge base for:
+
+- Consumer IR remotes.
+- Passive weather/sensor telemetry.
+- TPMS-style passive sensors.
+- Rolling-code/security remotes.
+- Automotive/key-fob risk.
+- Access-control credentials/tags.
+- General NFC tags.
+- GPIO/lab hardware.
+
+This database powers the Shazam-style identity card and safe community library matching.
+
+### Passive Sensor Mode
+
+Sub-GHz sensor-like captures get a passive guide with:
+
+- Observations to record.
+- Safe documentation steps.
+- Clear `never do` boundaries.
+- No replay, no spoofing, no transmit workflow.
+
+### Better IR Remote Generation
+
+The IR Builder now supports:
+
+- Parsed Flipper `.ir` button import from the current capture.
+- Duplicate button-name validation.
+- Safe starter profiles from the local community library.
+- Markdown/JSON analysis reports that can include the AI explanation.
+
+### Exportable Reports
+
+Use the report buttons in the readout panel to export:
+
+- Markdown lab notes.
+- JSON analysis bundles.
+
+Reports include the safety decision, fingerprint, evidence, passive guide, local RAG matches, safe community matches, photo metadata/notes, and optional AI explanation.
+
+## Phase 3: Magical Local UX
+
+### Web Serial Flipper Connection
+
+The Web Serial panel can request and open a USB serial connection in supported browsers.
+
+Requirements:
+
+- Chrome or Edge on desktop.
+- A secure context such as `localhost` or HTTPS.
+- Flipper connected over USB.
+
+Current scope:
+
+- Connection status.
+- USB vendor/product info when available.
+- Safe import/export workflow guidance.
+
+Out of scope:
+
+- Firmware updates.
+- Replay/transmit automation.
+- Credential operations.
+- Bypass or cloning flows.
+
+### Photo + Capture Analysis
+
+Attach an image of the device or remote and add a short note such as `hotel AC unit`, `Samsung TV`, or `outdoor weather sensor`. SmolSignal uses image metadata and your notes to improve the fingerprint and AI explanation context.
+
+The app does not send raw image bytes to AI providers. Only file name, dimensions, and your notes are included in the safe prompt context.
+
+### Shazam For Signals
+
+The identity card combines:
+
+- Parsed Flipper metadata.
+- Protocol database matches.
+- Frequency and modulation features.
+- Photo context.
+- Local RAG snippets.
+- Safety-gate output.
+
+The result is a plain-English likely category with confidence and evidence.
+
+### Local Vector Search/RAG
+
+SmolSignal includes a small local knowledge base and a browser-side vector search. It retrieves relevant safety/protocol snippets and can pass those snippets into the AI explainer as safe context.
+
+### Safe Community Profile Library
+
+The community library is local and safety-filtered. It includes only:
+
+- Consumer IR starter profiles.
+- Passive sensor note templates.
+- GPIO lab checklists.
+
+It does not include vehicle, access, garage/gate, alarm, credential, or unknown-RF replay profiles.
+
 ## IR Builder
 
 The IR Builder creates Flipper-compatible files like this:
@@ -244,6 +367,12 @@ src/styles.css                 Responsive app styling
 src/lib/flipperParser.ts       Flipper text parser
 src/lib/safetyPolicy.ts        Safety classifier and explanations
 src/lib/aiClient.ts            AI provider client, prompt builder, and redaction
+src/lib/protocolDatabase.ts    Local protocol/device category database
+src/lib/fingerprintEngine.ts   Signal fingerprinting and confidence scoring
+src/lib/passiveSensor.ts       Passive sensor documentation mode
+src/lib/localRag.ts            Local vector search/RAG over built-in docs
+src/lib/communityLibrary.ts    Safe local profile/template library
+src/lib/reportExporter.ts      Markdown and JSON report exporters
 src/lib/irBuilder.ts           Safe .ir generator
 src/lib/samples.ts             Built-in demo captures
 server/ai-bridge.mjs           Optional local bridge for cloud providers
@@ -291,6 +420,8 @@ and publishes `dist/`.
 - RF sensor labeling for weather and telemetry captures.
 - Lab-only simulated protocol tutorials.
 - Local RAG over Flipper docs and safe protocol references.
+- Deeper Flipper RPC import/export once scoped safely.
+- Optional local vision model integration for image understanding.
 
 ## License
 
