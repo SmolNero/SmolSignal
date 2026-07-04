@@ -77,6 +77,8 @@ export default function App() {
   const [aiExplanation, setAiExplanation] = useState<AiExplanation>();
   const [aiError, setAiError] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
+  const [labEnabled, setLabEnabled] = useState(false);
+  const [labScope, setLabScope] = useState("Owned/simulated lab fixture only; no vehicles, credentials, access systems, gates, garages, or alarms.");
   const [photoContext, setPhotoContext] = useState<PhotoContext>();
   const [photoPreview, setPhotoPreview] = useState("");
   const [irImportMessage, setIrImportMessage] = useState("");
@@ -84,7 +86,7 @@ export default function App() {
   const [serialStatus, setSerialStatus] = useState("Not connected");
   const [serialLog, setSerialLog] = useState("Use Chrome or Edge on desktop for Web Serial. Connect Flipper over USB, then click Connect.");
 
-  const analysis = captureText.trim() ? analyzeCapture(captureText, fileName, goal) : undefined;
+  const analysis = captureText.trim() ? analyzeCapture(captureText, fileName, goal, { enabled: labEnabled, scope: labScope }) : undefined;
   const fingerprint = analysis ? fingerprintAnalysis(analysis, goal, photoContext) : undefined;
   const passiveGuide = analysis && fingerprint ? buildPassiveSensorGuide(analysis, fingerprint) : undefined;
   const ragResults = analysis && fingerprint ? searchLocalKnowledge(buildRagQuery(analysis, fingerprint, goal, photoContext), 3) : [];
@@ -340,6 +342,33 @@ export default function App() {
             placeholder="Example: build a replacement remote for my TV"
           />
 
+          <div className="lab-box">
+            <div className="section-heading compact-heading horizontal">
+              <div>
+                <p className="eyebrow">Authorized Lab Mode</p>
+                <h3>Scoped owned/simulated work</h3>
+              </div>
+              <label className="switch-label">
+                <input type="checkbox" checked={labEnabled} onChange={(event) => setLabEnabled(event.target.checked)} />
+                <span>{labEnabled ? "On" : "Off"}</span>
+              </label>
+            </div>
+            <p className="muted">
+              Enables richer lab documentation and AI explanation for non-blocked captures when scope is provided. It does
+              not unlock car keys, access credentials, gates, garages, alarms, bypass, cloning, or unknown-security replay.
+            </p>
+            <label className="field-label" htmlFor="labScope">
+              Scope / authorization notes
+            </label>
+            <textarea
+              id="labScope"
+              className="scope-textarea"
+              value={labScope}
+              onChange={(event) => setLabScope(event.target.value)}
+              placeholder="Describe the owned toy/demo device, simulated protocol, or isolated lab fixture."
+            />
+          </div>
+
           <div className="photo-box">
             <div className="section-heading compact-heading">
               <p className="eyebrow">Photo + capture</p>
@@ -436,6 +465,20 @@ export default function App() {
                 <h3>{analysis.summary}</h3>
                 <p>{analysis.plainEnglish}</p>
               </div>
+
+              {analysis.lab?.enabled ? (
+                <div className="lab-readout">
+                  <div>
+                    <p className="eyebrow">Authorized Lab Mode</p>
+                    <strong>{analysis.lab.effect}</strong>
+                  </div>
+                  <ul>
+                    {analysis.lab.constraints.map((constraint) => (
+                      <li key={constraint}>{constraint}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
 
               <div className="fact-grid">
                 <div>

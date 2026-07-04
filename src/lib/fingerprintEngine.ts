@@ -149,6 +149,7 @@ export function fingerprintAnalysis(analysis: AnalysisResult, userGoal = "", pho
   if (photo?.fileName) evidence.push(`Photo context attached: ${photo.fileName} (${photo.width}x${photo.height}).`);
 
   const warnings = [
+    ...(analysis.lab?.enabled ? ["Authorized Lab Mode is active; keep all work inside the documented owned/simulated scope."] : []),
     ...(analysis.decision !== "allow" ? ["Keep this workflow passive/explanation-only unless the source is clearly safe and authorized."] : []),
     ...(safety === "blocked" ? ["Do not replay, clone, transmit, unlock, or bypass this signal."] : []),
   ];

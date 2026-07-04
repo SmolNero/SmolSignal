@@ -61,6 +61,10 @@ textarea {
   line-height: 1.55;
 }
 
+.scope-textarea {
+  min-height: 6rem;
+}
+
 code,
 pre {
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
@@ -255,6 +259,8 @@ li,
   background: rgba(117, 245, 215, 0.1);
 }
 
+.lab-box,
+.lab-readout,
 .photo-box,
 .signal-identity-card,
 .mode-card,
@@ -269,6 +275,37 @@ li,
 
 .photo-box {
   margin-top: 1rem;
+}
+
+.lab-box {
+  margin-top: 1rem;
+  border-color: rgba(255, 211, 107, 0.25);
+  background: rgba(255, 211, 107, 0.07);
+}
+
+.lab-readout {
+  margin: 1rem 0;
+  border-color: rgba(255, 211, 107, 0.28);
+  background: rgba(255, 211, 107, 0.08);
+}
+
+.lab-readout strong {
+  color: #fff5d6;
+}
+
+.switch-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: 999px;
+  padding: 0.45rem 0.7rem;
+  background: rgba(255, 255, 255, 0.09);
+  color: #d9fffa;
+  font-weight: 850;
+}
+
+.switch-label input {
+  width: auto;
 }
 
 .photo-preview {

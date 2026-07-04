@@ -1,6 +1,11 @@
 import { parseFlipperCapture } from "./flipperParser";
 import type { AnalysisResult, ParsedCapture, SafetyDecision, SafetyFinding, SafetyLevel } from "./types";
 
+export interface LabAuthorizationOptions {
+  enabled: boolean;
+  scope: string;
+}
+
 const AUTOMOTIVE_TERMS = [
   "automotive",
   "vehicle",
@@ -215,9 +220,40 @@ function highRiskFindings(text: string, findings: SafetyFinding[]) {
   }
 }
 
-function makePlainEnglish(parsed: ParsedCapture, level: SafetyLevel) {
+function hasHardBlock(findings: SafetyFinding[]) {
+  return findings.some((finding) => finding.level === "blocked");
+}
+
+function isLabEligible(options?: LabAuthorizationOptions) {
+  return Boolean(options?.enabled && options.scope.trim().length >= 12);
+}
+
+function labContext(options?: LabAuthorizationOptions) {
+  if (!options?.enabled) return undefined;
+  const scope = options.scope.trim();
+  return {
+    enabled: true,
+    scope,
+    effect:
+      scope.length >= 12
+        ? "Authorized Lab Mode is active for non-blocked captures. SmolSignal enables richer documentation, report, RAG, and AI explanation workflows while preserving hard blockers."
+        : "Authorized Lab Mode was requested, but scope notes are too short to change the safety decision.",
+    constraints: [
+      "Hard-blocked categories remain blocked regardless of lab mode.",
+      "No car key, access credential, gate, garage, alarm, vehicle, cloning, bypass, unlock, or unknown-security replay workflows are generated.",
+      "Use only owned, simulated, toy, or intentionally isolated lab fixtures described in the scope notes.",
+      "Generated output remains for documentation, labeling, reports, local RAG, and safe AI explanations.",
+    ],
+  };
+}
+
+function makePlainEnglish(parsed: ParsedCapture, level: SafetyLevel, lab?: AnalysisResult["lab"]) {
   if (level === "blocked") {
     return "This capture overlaps with systems that can protect vehicles, doors, gates, alarms, or credentials. SmolSignal will explain what category it appears to be, but it will not provide cloning, replay, bypass, unlock, or attack steps.";
+  }
+
+  if (lab?.enabled && parsed.domain !== "infrared") {
+    return "Authorized Lab Mode is active for this non-blocked capture. SmolSignal can provide richer lab documentation, reports, RAG context, and AI explanations while still refusing cloning, bypass, unlock, credential, vehicle, alarm, gate, garage, or unknown-security replay workflows.";
   }
 
   if (parsed.domain === "infrared") {
@@ -239,7 +275,7 @@ function makePlainEnglish(parsed: ParsedCapture, level: SafetyLevel) {
   return "SmolSignal does not recognize this format yet. It can still summarize visible fields and suggest safe documentation steps.";
 }
 
-function makeActions(parsed: ParsedCapture, level: SafetyLevel) {
+function makeActions(parsed: ParsedCapture, level: SafetyLevel, lab?: AnalysisResult["lab"]) {
   const blockedActions = [
     "Car key cloning or unlock flows",
     "Access badge/card cloning",
@@ -270,6 +306,19 @@ function makeActions(parsed: ParsedCapture, level: SafetyLevel) {
     };
   }
 
+  if (lab?.enabled) {
+    return {
+      safeActions: [
+        "Create scoped lab documentation and exportable reports",
+        "Ask the AI explainer for richer beginner-friendly lab context",
+        "Compare metadata, timing features, protocol hints, and local RAG references",
+        "Build passive notes for owned sensors or simulated lab fixtures",
+        "Record authorization scope and constraints alongside the analysis",
+      ],
+      blockedActions,
+    };
+  }
+
   return {
     safeActions: [
       "Classify the capture type",
@@ -281,12 +330,20 @@ function makeActions(parsed: ParsedCapture, level: SafetyLevel) {
   };
 }
 
-function makeNextSteps(parsed: ParsedCapture, level: SafetyLevel) {
+function makeNextSteps(parsed: ParsedCapture, level: SafetyLevel, lab?: AnalysisResult["lab"]) {
   if (level === "blocked") {
     return [
       "Do not replay, transmit, clone, or use this capture against a real-world system.",
       "If this is an authorized lab, replace the capture with a toy/demo protocol and document the lab scope.",
       "Use SmolSignal only for labeling, learning, and safe notes for this item.",
+    ];
+  }
+
+  if (lab?.enabled && parsed.domain !== "infrared") {
+    return [
+      "Keep the capture inside the scoped owned/simulated lab described in Authorized Lab Mode.",
+      "Export a Markdown or JSON report so the scope, constraints, and safety decision stay attached to the analysis.",
+      "Use local RAG and the AI explainer for learning and documentation, not for replay, cloning, bypass, or unlock steps.",
     ];
   }
 
@@ -313,7 +370,7 @@ function makeNextSteps(parsed: ParsedCapture, level: SafetyLevel) {
   ];
 }
 
-export function analyzeCapture(content: string, fileName?: string, userGoal = ""): AnalysisResult {
+export function analyzeCapture(content: string, fileName?: string, userGoal = "", labOptions?: LabAuthorizationOptions): AnalysisResult {
   const parsed = parseFlipperCapture(content, fileName);
   const text = combinedText(parsed, userGoal);
   const findings: SafetyFinding[] = [];
@@ -321,19 +378,37 @@ export function analyzeCapture(content: string, fileName?: string, userGoal = ""
   domainFinding(parsed, text, findings);
   highRiskFindings(text, findings);
 
-  const level = strongestLevel(findings, parsed.domain === "unknown" ? "unknown" : "caution");
+  const lab = labContext(labOptions);
+  const labEligible = isLabEligible(labOptions) && !hasHardBlock(findings);
+
+  if (labOptions?.enabled) {
+    addFinding(
+      findings,
+      labEligible ? "safe" : hasHardBlock(findings) ? "blocked" : "caution",
+      labEligible ? "Authorized lab scope accepted" : "Authorized lab scope not applied",
+      labEligible
+        ? "The user provided scoped lab/ownership notes. Non-blocked caution/unknown captures can use richer lab documentation and AI explanation workflows."
+        : hasHardBlock(findings)
+          ? "Hard-blocked categories remain blocked even when Authorized Lab Mode is enabled."
+          : "Add clearer scope notes describing the owned, simulated, toy, or isolated lab fixture.",
+    );
+  }
+
+  const baseLevel = strongestLevel(findings, parsed.domain === "unknown" ? "unknown" : "caution");
+  const level = labEligible && baseLevel !== "blocked" ? "safe" : baseLevel;
   const decision = decisionFor(level);
-  const actions = makeActions(parsed, level);
+  const actions = makeActions(parsed, level, labEligible ? lab : undefined);
 
   return {
     parsed,
     level,
     decision,
     summary: summarizeParsed(parsed),
-    plainEnglish: makePlainEnglish(parsed, level),
+    plainEnglish: makePlainEnglish(parsed, level, labEligible ? lab : undefined),
     findings,
     safeActions: actions.safeActions,
     blockedActions: actions.blockedActions,
-    nextSteps: makeNextSteps(parsed, level),
+    nextSteps: makeNextSteps(parsed, level, labEligible ? lab : undefined),
+    lab,
   };
 }

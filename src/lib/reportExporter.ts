@@ -94,6 +94,16 @@ export function buildMarkdownReport(input: ReportInput) {
     `- Frequency band: ${fingerprint.features.frequencyBand}`,
     `- Modulation/preset: ${fingerprint.features.modulation}`,
     "",
+    analysis.lab?.enabled
+      ? [
+          "## Authorized Lab Mode",
+          `- Effect: ${analysis.lab.effect}`,
+          `- Scope: ${analysis.lab.scope}`,
+          "- Constraints:",
+          ...analysis.lab.constraints.map((constraint) => `  - ${constraint}`),
+          "",
+        ].join("\n")
+      : "",
     photo
       ? ["## Photo Context", `- File: ${photo.fileName}`, `- Size: ${photo.width}x${photo.height}`, `- Notes: ${photo.notes || "none"}`, ""].join("\n")
       : "",

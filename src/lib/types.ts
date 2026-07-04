@@ -49,6 +49,12 @@ export interface AnalysisResult {
   safeActions: string[];
   blockedActions: string[];
   nextSteps: string[];
+  lab?: {
+    enabled: boolean;
+    scope: string;
+    effect: string;
+    constraints: string[];
+  };
 }
 
 export interface IrButton {

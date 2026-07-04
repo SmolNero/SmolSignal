@@ -19,6 +19,34 @@ SmolSignal is an AI signal copilot for Flipper Zero users. It turns Flipper capt
 
 For risky captures, SmolSignal stays in explanation-only mode so the user can learn what category they are looking at without receiving misuse steps.
 
+## Authorized Lab Mode
+
+Authorized Lab Mode gives users more control for clearly owned, simulated, toy, or isolated lab work without removing SmolSignal's hard safety boundaries.
+
+When enabled with meaningful scope notes, non-blocked caution/unknown captures can use richer workflows:
+
+- Lab documentation.
+- Exportable reports.
+- Local RAG context.
+- AI explanations.
+- Passive sensor notes.
+- Metadata, timing, and protocol-hint comparison.
+
+Hard-blocked categories remain blocked even in lab mode:
+
+- Car keys and vehicle systems.
+- Access credentials and badges.
+- Doors, gates, garages, alarms, and barriers.
+- Bypass, cloning, unlock, replay, or unknown-security transmit workflows.
+
+Example scope note:
+
+```text
+Owned toy transmitter connected to an isolated test receiver on my bench; no vehicles, credentials, gates, garages, alarms, or access systems.
+```
+
+The scope note is included in prompts and reports so the authorization context stays attached to the analysis.
+
 ## Quick Start
 
 Requirements:

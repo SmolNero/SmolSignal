@@ -62,6 +62,7 @@ function sanitizeAnalysisForPrompt(analysis: AnalysisResult) {
       decision: analysis.decision,
       summary: analysis.summary,
       plainEnglish: analysis.plainEnglish,
+      lab: analysis.lab,
     },
     parsedCapture: {
       fileName: analysis.parsed.fileName,
