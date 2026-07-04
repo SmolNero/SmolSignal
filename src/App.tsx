@@ -1,4 +1,10 @@
 import { ChangeEvent, useState } from "react";
+import {
+  aiEndpointPresets,
+  generateAiExplanation,
+  type AiExplanation,
+  type AiProviderConfig,
+} from "./lib/aiClient";
 import { buildIrFile, safeIrProtocols } from "./lib/irBuilder";
 import { analyzeCapture } from "./lib/safetyPolicy";
 import { samples } from "./lib/samples";
@@ -16,6 +22,15 @@ const levelLabels: Record<SafetyLevel, string> = {
   caution: "Explain-only",
   blocked: "Blocked",
   unknown: "Unknown",
+};
+
+const defaultAiConfig: AiProviderConfig = {
+  provider: "ollama",
+  bridgeProvider: "ollama",
+  endpoint: aiEndpointPresets.ollama,
+  model: "qwen2.5:7b",
+  apiKey: "",
+  temperature: 0.2,
 };
 
 function RiskBadge({ level }: { level: SafetyLevel }) {
@@ -41,6 +56,10 @@ export default function App() {
   const [remoteName, setRemoteName] = useState("SmolSignal Remote");
   const [buttons, setButtons] = useState<IrButton[]>([emptyButton]);
   const [dropActive, setDropActive] = useState(false);
+  const [aiConfig, setAiConfig] = useState<AiProviderConfig>(defaultAiConfig);
+  const [aiExplanation, setAiExplanation] = useState<AiExplanation>();
+  const [aiError, setAiError] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
 
   const analysis = captureText.trim() ? analyzeCapture(captureText, fileName, goal) : undefined;
   const buildResult = buildIrFile(remoteName, buttons);
@@ -69,11 +88,68 @@ export default function App() {
     setCaptureText(sample.content);
     setFileName(sample.fileName);
     setGoal(sample.goal);
+    setAiExplanation(undefined);
+    setAiError("");
   }
 
   function copyIrFile() {
     if (!buildResult.ok) return;
     void navigator.clipboard.writeText(buildResult.content);
+  }
+
+  function updateAiConfig(patch: Partial<AiProviderConfig>) {
+    setAiConfig((current) => ({ ...current, ...patch }));
+  }
+
+  function chooseProvider(provider: AiProviderConfig["provider"]) {
+    if (provider === "ollama") {
+      setAiConfig((current) => ({
+        ...current,
+        provider,
+        bridgeProvider: "ollama",
+        endpoint: aiEndpointPresets.ollama,
+        model: current.model || "qwen2.5:7b",
+        apiKey: "",
+      }));
+      return;
+    }
+
+    if (provider === "bridge") {
+      setAiConfig((current) => ({
+        ...current,
+        provider,
+        endpoint: aiEndpointPresets.bridge,
+        apiKey: "",
+      }));
+      return;
+    }
+
+    setAiConfig((current) => ({
+      ...current,
+      provider,
+      bridgeProvider: "custom",
+      endpoint: aiEndpointPresets.llamaCpp,
+    }));
+  }
+
+  function chooseEndpointPreset(preset: keyof typeof aiEndpointPresets) {
+    updateAiConfig({ endpoint: aiEndpointPresets[preset] });
+  }
+
+  async function askAi() {
+    if (!analysis) return;
+    setAiLoading(true);
+    setAiError("");
+    setAiExplanation(undefined);
+
+    try {
+      const explanation = await generateAiExplanation(analysis, goal, aiConfig);
+      setAiExplanation(explanation);
+    } catch (error) {
+      setAiError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setAiLoading(false);
+    }
   }
 
   return (
@@ -83,8 +159,8 @@ export default function App() {
           <p className="eyebrow">SmolSignal</p>
           <h1>AI-style signal copilot for Flipper Zero.</h1>
           <p>
-            Drop a Flipper capture, describe what you want to do, and SmolSignal explains the signal in plain English,
-            classifies risk, and only enables safe workflows like consumer IR remote generation.
+            Drop a Flipper capture, describe what you want to do, and SmolSignal classifies risk with a deterministic
+            safety gate. Then use Ollama, Qwen, GPT, DeepSeek, llama.cpp, or vLLM for a richer AI explanation.
           </p>
           <div className="hero-actions">
             <a href="#analyzer" className="primary-link">
@@ -99,7 +175,7 @@ export default function App() {
           <span className="pulse" />
           <h2>Safety engine</h2>
           <p>Blocks car keys, access bypass, unknown security replay, and generic hack flows.</p>
-          <p>Allows learning, labeling, documentation, GPIO safety notes, and safe IR tooling.</p>
+          <p>The AI is the explainer, not the permission system. Safe IR tooling stays local and deterministic.</p>
         </div>
       </section>
 
@@ -236,6 +312,123 @@ export default function App() {
                     ))}
                   </ul>
                 </div>
+              </div>
+
+              <div className="ai-panel" id="ai-explainer">
+                <div className="section-heading horizontal">
+                  <div>
+                    <p className="eyebrow">Phase 1 AI</p>
+                    <h2>Ask a real model</h2>
+                  </div>
+                  <span className="risk-badge risk-safe">Safety-gated</span>
+                </div>
+
+                <p className="muted">
+                  The model receives a sanitized analysis and must follow the safety decision above. For cloud models,
+                  use the local AI bridge so API keys stay out of the browser.
+                </p>
+
+                <div className="ai-grid">
+                  <label>
+                    <span>Provider</span>
+                    <select value={aiConfig.provider} onChange={(event) => chooseProvider(event.target.value as AiProviderConfig["provider"])}>
+                      <option value="ollama">Ollama direct</option>
+                      <option value="bridge">Local AI bridge</option>
+                      <option value="openai-compatible">OpenAI-compatible direct</option>
+                    </select>
+                  </label>
+
+                  {aiConfig.provider === "bridge" ? (
+                    <label>
+                      <span>Bridge upstream</span>
+                      <select
+                        value={aiConfig.bridgeProvider}
+                        onChange={(event) => updateAiConfig({ bridgeProvider: event.target.value as AiProviderConfig["bridgeProvider"] })}
+                      >
+                        <option value="ollama">Ollama</option>
+                        <option value="openai">OpenAI / GPT</option>
+                        <option value="deepseek">DeepSeek</option>
+                        <option value="qwen">Qwen / DashScope</option>
+                        <option value="custom">Custom OpenAI-compatible</option>
+                      </select>
+                    </label>
+                  ) : null}
+
+                  <label>
+                    <span>Model</span>
+                    <input
+                      value={aiConfig.model}
+                      onChange={(event) => updateAiConfig({ model: event.target.value })}
+                      placeholder="qwen2.5:7b, gpt-4o-mini, deepseek-chat"
+                    />
+                  </label>
+
+                  <label>
+                    <span>Temperature</span>
+                    <input
+                      type="number"
+                      min="0"
+                      max="1.5"
+                      step="0.1"
+                      value={aiConfig.temperature}
+                      onChange={(event) => updateAiConfig({ temperature: Number(event.target.value) })}
+                    />
+                  </label>
+                </div>
+
+                <div className="preset-row">
+                  <button type="button" onClick={() => chooseEndpointPreset("ollama")}>Ollama</button>
+                  <button type="button" onClick={() => chooseEndpointPreset("bridge")}>Bridge</button>
+                  <button type="button" onClick={() => chooseEndpointPreset("llamaCpp")}>llama.cpp</button>
+                  <button type="button" onClick={() => chooseEndpointPreset("vllm")}>vLLM</button>
+                  <button type="button" onClick={() => chooseEndpointPreset("openai")}>OpenAI</button>
+                  <button type="button" onClick={() => chooseEndpointPreset("deepseek")}>DeepSeek</button>
+                  <button type="button" onClick={() => chooseEndpointPreset("qwen")}>Qwen</button>
+                </div>
+
+                <label className="field-label" htmlFor="aiEndpoint">
+                  Endpoint
+                </label>
+                <input
+                  id="aiEndpoint"
+                  value={aiConfig.endpoint}
+                  onChange={(event) => updateAiConfig({ endpoint: event.target.value })}
+                />
+
+                {aiConfig.provider === "openai-compatible" ? (
+                  <>
+                    <label className="field-label" htmlFor="aiApiKey">
+                      API key for direct browser mode
+                    </label>
+                    <input
+                      id="aiApiKey"
+                      value={aiConfig.apiKey}
+                      onChange={(event) => updateAiConfig({ apiKey: event.target.value })}
+                      placeholder="Only use direct keys locally. Prefer the bridge for cloud providers."
+                      type="password"
+                    />
+                    <p className="warning-text">
+                      Direct browser mode can expose API keys and may hit provider CORS limits. For GPT, DeepSeek, and
+                      Qwen on a public/demo page, run <code>npm run ai:bridge</code> instead.
+                    </p>
+                  </>
+                ) : null}
+
+                <div className="builder-actions">
+                  <button type="button" className="primary-button" disabled={aiLoading} onClick={askAi}>
+                    {aiLoading ? "Asking model..." : "Ask AI explainer"}
+                  </button>
+                </div>
+
+                {aiError ? <div className="error-box"><p>{aiError}</p></div> : null}
+                {aiExplanation ? (
+                  <div className="ai-answer">
+                    <div className="answer-meta">
+                      {aiExplanation.provider} · {aiExplanation.model}
+                    </div>
+                    <pre>{aiExplanation.text}</pre>
+                  </div>
+                ) : null}
               </div>
             </>
           ) : (

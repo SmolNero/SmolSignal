@@ -1,6 +1,6 @@
 # SmolSignal
 
-SmolSignal is an offline-first, AI-style signal copilot for Flipper Zero users. It turns Flipper capture files into plain-English explanations, classifies safety risk, and generates only safe workflows such as consumer IR remote files.
+SmolSignal is a safety-first AI signal copilot for Flipper Zero users. It turns Flipper capture files into plain-English explanations, classifies safety risk, can ask real local/cloud models for richer explanations, and generates only safe workflows such as consumer IR remote files.
 
 This is not a bypass or cloning tool. The safety engine blocks car key cloning, access-control bypass, unknown security replay, and generic "hack this device" flows.
 
@@ -8,10 +8,11 @@ This is not a bypass or cloning tool. The safety engine blocks car key cloning, 
 
 - Reads common Flipper-style text captures: `.ir`, `.sub`, `.nfc`, `.rfid`, `.ibtn`, and `.txt`.
 - Detects likely signal domain: infrared, Sub-GHz, NFC, RFID, iButton, GPIO, BLE, or unknown.
-- Explains the capture in beginner-friendly language.
+- Explains the capture in beginner-friendly language with a deterministic offline readout.
+- Optionally asks real AI models through Ollama, GPT/OpenAI, DeepSeek, Qwen/DashScope, llama.cpp, vLLM, or any OpenAI-compatible endpoint.
 - Classifies the workflow as `safe`, `explain-only`, `blocked`, or `unknown`.
 - Generates Flipper-compatible `.ir` files for safe consumer infrared remotes.
-- Runs locally in your browser with no paid API and no cloud dependency.
+- Keeps the safety gate deterministic. The AI model is an explainer, not the permission system.
 
 ## Safety Boundaries
 
@@ -63,6 +64,12 @@ Run tests:
 npm test
 ```
 
+Run the optional local AI bridge:
+
+```bash
+npm run ai:bridge
+```
+
 ## Using It With Flipper Files
 
 1. Export or copy a Flipper text-format file such as `.ir`, `.sub`, `.nfc`, or `.rfid`.
@@ -71,6 +78,136 @@ npm test
 4. Review the safety classification, plain-English summary, findings, and next steps.
 5. If it is a safe consumer IR workflow, use the IR Builder to create a `.ir` file.
 6. Put the generated `.ir` file on your Flipper SD card under the infrared folder.
+
+## Phase 1 AI: Real Model Support
+
+SmolSignal now has three AI modes.
+
+| Mode | Best For | API Key Location |
+| --- | --- | --- |
+| `Ollama direct` | Local models such as Qwen, DeepSeek, Llama, Gemma | No API key |
+| `OpenAI-compatible direct` | Local `llama.cpp`, vLLM, LM Studio, or trusted local endpoints | Browser field |
+| `Local AI bridge` | GPT/OpenAI, DeepSeek, Qwen/DashScope, or custom cloud providers | Environment variable on your machine |
+
+The deterministic safety gate runs before the model. The model receives a sanitized JSON summary, not raw replay-oriented payloads. Sensitive-looking fields such as keys, raw data, UIDs, commands, addresses, credentials, and secrets are redacted before prompting.
+
+### Ollama Direct
+
+Install Ollama and pull a model:
+
+```bash
+ollama pull qwen2.5:7b
+ollama serve
+```
+
+Start SmolSignal:
+
+```bash
+npm run dev
+```
+
+In the app:
+
+- Provider: `Ollama direct`
+- Endpoint: `http://localhost:11434/api/chat`
+- Model: `qwen2.5:7b`
+
+If the browser blocks the local request, start Ollama with an allowed origin:
+
+```bash
+OLLAMA_ORIGINS=http://localhost:5173 ollama serve
+```
+
+### llama.cpp or vLLM Direct
+
+Start a local OpenAI-compatible server:
+
+```bash
+llama-server -hf ggml-org/gemma-3-1b-it-GGUF --port 8080
+```
+
+In the app:
+
+- Provider: `OpenAI-compatible direct`
+- Endpoint: `http://localhost:8080/v1/chat/completions`
+- Model: the model name your server expects
+- API key: blank for most local servers
+
+For vLLM, use:
+
+```text
+http://localhost:8000/v1/chat/completions
+```
+
+### GPT/OpenAI Through The Bridge
+
+Use the bridge for cloud providers so keys are not typed into the browser:
+
+```bash
+export OPENAI_API_KEY="your_key_here"
+npm run ai:bridge
+```
+
+In another terminal:
+
+```bash
+npm run dev
+```
+
+In the app:
+
+- Provider: `Local AI bridge`
+- Bridge upstream: `OpenAI / GPT`
+- Endpoint: `http://localhost:8787/api/ai`
+- Model: `gpt-4o-mini` or another chat model
+
+### DeepSeek Through The Bridge
+
+```bash
+export DEEPSEEK_API_KEY="your_key_here"
+npm run ai:bridge
+```
+
+In the app:
+
+- Provider: `Local AI bridge`
+- Bridge upstream: `DeepSeek`
+- Model: `deepseek-chat`
+
+### Qwen/DashScope Through The Bridge
+
+```bash
+export DASHSCOPE_API_KEY="your_key_here"
+npm run ai:bridge
+```
+
+In the app:
+
+- Provider: `Local AI bridge`
+- Bridge upstream: `Qwen / DashScope`
+- Model: a DashScope OpenAI-compatible model name available to your account
+
+### Custom OpenAI-Compatible Bridge
+
+```bash
+export OPENAI_COMPATIBLE_ENDPOINT="https://your-provider.example/v1/chat/completions"
+export OPENAI_COMPATIBLE_API_KEY="your_key_here"
+npm run ai:bridge
+```
+
+In the app:
+
+- Provider: `Local AI bridge`
+- Bridge upstream: `Custom OpenAI-compatible`
+- Model: the provider's chat model name
+
+### Public Demo Warning
+
+Do not put cloud API keys into a public GitHub Pages demo. Use local Ollama, a local OpenAI-compatible server, or the local AI bridge. If you host SmolSignal from a non-local origin and want it to call your local bridge, set `SMOLSIGNAL_ALLOWED_ORIGINS` before running the bridge:
+
+```bash
+SMOLSIGNAL_ALLOWED_ORIGINS=https://YOUR_USERNAME.github.io npm run ai:bridge
+```
 
 ## IR Builder
 
@@ -106,8 +243,10 @@ src/App.tsx                    Main React UI
 src/styles.css                 Responsive app styling
 src/lib/flipperParser.ts       Flipper text parser
 src/lib/safetyPolicy.ts        Safety classifier and explanations
+src/lib/aiClient.ts            AI provider client, prompt builder, and redaction
 src/lib/irBuilder.ts           Safe .ir generator
 src/lib/samples.ts             Built-in demo captures
+server/ai-bridge.mjs           Optional local bridge for cloud providers
 src/lib/*.test.ts              Unit tests
 ```
 
@@ -146,12 +285,12 @@ and publishes `dist/`.
 
 ## Roadmap Ideas
 
-- Optional local `llama.cpp`/Ollama explanation backend.
 - More Flipper file formats and protocol hints.
 - Community IR profile import/export.
 - Safer GPIO wiring assistant.
 - RF sensor labeling for weather and telemetry captures.
 - Lab-only simulated protocol tutorials.
+- Local RAG over Flipper docs and safe protocol references.
 
 ## License
 
