@@ -412,17 +412,6 @@ npm run build
 
 and publishes `dist/`.
 
-## Roadmap Ideas
-
-- More Flipper file formats and protocol hints.
-- Community IR profile import/export.
-- Safer GPIO wiring assistant.
-- RF sensor labeling for weather and telemetry captures.
-- Lab-only simulated protocol tutorials.
-- Local RAG over Flipper docs and safe protocol references.
-- Deeper Flipper RPC import/export once scoped safely.
-- Optional local vision model integration for image understanding.
-
 ## License
 
 MIT. See `LICENSE`.
