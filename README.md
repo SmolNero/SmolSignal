@@ -1,8 +1,6 @@
 # SmolSignal
 
-SmolSignal is a safety-first AI signal copilot for Flipper Zero users. It turns Flipper capture files into plain-English explanations, classifies safety risk, can ask real local/cloud models for richer explanations, and generates only safe workflows such as consumer IR remote files.
-
-This is not a bypass or cloning tool. The safety engine blocks car key cloning, access-control bypass, unknown security replay, and generic "hack this device" flows.
+SmolSignal is an AI signal copilot for Flipper Zero users. It turns Flipper capture files into plain-English explanations, classifies safety risk, can ask real local/cloud models for richer explanations, and generates only safe workflows such as consumer IR remote files.
 
 ## What It Does
 
@@ -18,16 +16,6 @@ This is not a bypass or cloning tool. The safety engine blocks car key cloning, 
 - Classifies the workflow as `safe`, `explain-only`, `blocked`, or `unknown`.
 - Generates Flipper-compatible `.ir` files for safe consumer infrared remotes.
 - Keeps the safety gate deterministic. The AI model is an explainer, not the permission system.
-
-## Safety Boundaries
-
-SmolSignal will not generate:
-
-- Car key cloning or unlock flows.
-- Access badge/card cloning.
-- Bypass instructions for doors, gates, alarms, or vehicles.
-- Replay/transmit workflows for unknown or security-like RF captures.
-- Generic "hack this device" instructions.
 
 For risky captures, SmolSignal stays in explanation-only mode so the user can learn what category they are looking at without receiving misuse steps.
 
@@ -86,7 +74,7 @@ npm run ai:bridge
 7. If it is a safe consumer IR workflow, use the IR Builder to create a `.ir` file.
 8. Put the generated `.ir` file on your Flipper SD card under the infrared folder.
 
-## Phase 1 AI: Real Model Support
+## Real Model Support
 
 SmolSignal now has three AI modes.
 
@@ -216,7 +204,7 @@ Do not put cloud API keys into a public GitHub Pages demo. Use local Ollama, a l
 SMOLSIGNAL_ALLOWED_ORIGINS=https://YOUR_USERNAME.github.io npm run ai:bridge
 ```
 
-## Phase 2: Useful Signal Intelligence
+## Useful Signal Intelligence
 
 ### Capture Fingerprinting
 
@@ -274,7 +262,7 @@ Use the report buttons in the readout panel to export:
 
 Reports include the safety decision, fingerprint, evidence, passive guide, local RAG matches, safe community matches, photo metadata/notes, and optional AI explanation.
 
-## Phase 3: Magical Local UX
+## Local UX
 
 ### Web Serial Flipper Connection
 
