@@ -36,5 +36,7 @@ RAW_Data: -1200 480 -380 920`,
     expect(fingerprint.category).toBe("passive_sensor");
     expect(fingerprint.passiveMode).toBe(true);
     expect(fingerprint.features.rawPulseStats?.count).toBeGreaterThan(0);
+    expect(fingerprint.features.fieldEntropy).toBeGreaterThan(0);
+    expect(fingerprint.evidence.join(" ")).toContain("Gate entropy");
   });
 });

@@ -261,6 +261,7 @@ li,
 
 .lab-box,
 .lab-readout,
+.gate-panel,
 .photo-box,
 .signal-identity-card,
 .mode-card,
@@ -291,6 +292,78 @@ li,
 
 .lab-readout strong {
   color: #fff5d6;
+}
+
+.gate-panel {
+  margin: 1rem 0;
+  border-color: rgba(117, 245, 215, 0.2);
+  background: rgba(117, 245, 215, 0.06);
+}
+
+.score-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.score-pills span {
+  border-radius: 999px;
+  padding: 0.35rem 0.6rem;
+  color: #d9fffa;
+  background: rgba(255, 255, 255, 0.09);
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.gate-evidence-list {
+  display: grid;
+  gap: 0.65rem;
+  margin-top: 1rem;
+}
+
+.gate-evidence {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  gap: 0.65rem;
+  align-items: start;
+  border-radius: 0.95rem;
+  padding: 0.75rem;
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.gate-evidence span,
+.gate-evidence strong {
+  border-radius: 999px;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.76rem;
+  text-transform: uppercase;
+}
+
+.gate-evidence span {
+  color: #75f5d7;
+  background: rgba(117, 245, 215, 0.1);
+}
+
+.gate-evidence strong {
+  color: #061311;
+  background: #b8fff0;
+}
+
+.gate-evidence p {
+  margin: 0;
+  color: #b9d8d2;
+  line-height: 1.5;
+}
+
+.gate-blocked strong {
+  color: #fff4f4;
+  background: #eb5160;
+}
+
+.gate-caution strong,
+.gate-unknown strong {
+  color: #2c1d00;
+  background: #ffd36b;
 }
 
 .switch-label {
@@ -629,6 +702,10 @@ li,
 
   .signal-identity-card {
     flex-direction: column;
+  }
+
+  .gate-evidence {
+    grid-template-columns: 1fr;
   }
 
   .community-actions {

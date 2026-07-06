@@ -43,6 +43,55 @@ RAW_Data: 1 2 3`,
 
     expect(result.level).toBe("caution");
     expect(result.decision).toBe("explain-only");
+    expect(result.gateEvidence.some((item) => item.source === "frequency")).toBe(true);
+    expect(result.gateEvidence.some((item) => item.source === "timing")).toBe(true);
+  });
+
+  it("uses frequency as weighted context without blocking by itself", () => {
+    const result = analyzeCapture(
+      `Filetype: Flipper SubGhz RAW File
+Frequency: 433920000
+Preset: FuriHalSubGhzPresetOok650Async`,
+      "frequency-only.sub",
+      "Identify this capture",
+    );
+
+    expect(result.decision).toBe("explain-only");
+    expect(result.gateScore.blocked).toBe(0);
+    expect(result.signalFeatures.primaryFrequencyBand).toContain("433 MHz");
+  });
+
+  it("uses protocol and intent with frequency to block high-risk captures", () => {
+    const result = analyzeCapture(
+      `Filetype: Flipper SubGhz Key File
+Frequency: 315000000
+Protocol: KeeLoq
+Manufacture: key fob`,
+      "keyfob.sub",
+      "replay this key fob",
+    );
+
+    expect(result.decision).toBe("blocked");
+    expect(result.gateScore.blocked).toBeGreaterThanOrEqual(2);
+    expect(result.gateEvidence.some((item) => item.source === "protocol" && item.level === "blocked")).toBe(true);
+    expect(result.gateEvidence.some((item) => item.source === "intent" && item.level === "blocked")).toBe(true);
+  });
+
+  it("computes Shannon entropy features for raw and hex-like payloads", () => {
+    const result = analyzeCapture(
+      `Filetype: Flipper SubGhz RAW File
+Frequency: 433920000
+Protocol: RAW
+RAW_Data: -1200 480 -380 920 -410 930 -1200 500 -390 910 -405 925 -1210 515
+Key: A1 B2 C3 D4 E5 F6 12 34`,
+      "entropy.sub",
+      "Analyze my owned lab sensor capture",
+    );
+
+    expect(result.signalFeatures.entropy.rawTokenCount).toBeGreaterThan(10);
+    expect(result.signalFeatures.entropy.rawValueNormalizedEntropy).toBeGreaterThan(0.5);
+    expect(result.signalFeatures.entropy.hexByteCount).toBeGreaterThan(4);
+    expect(result.gateEvidence.some((item) => item.source === "entropy")).toBe(true);
   });
 
   it("allows richer workflows for scoped authorized lab captures", () => {
@@ -63,6 +112,7 @@ RAW_Data: 1 2 3`,
     expect(result.decision).toBe("allow");
     expect(result.lab?.enabled).toBe(true);
     expect(result.safeActions.join(" ")).toContain("lab documentation");
+    expect(result.gateEvidence.some((item) => item.source === "lab_scope" && item.level === "safe")).toBe(true);
   });
 
   it("keeps hard-blocked categories blocked even in lab mode", () => {

@@ -234,6 +234,29 @@ SMOLSIGNAL_ALLOWED_ORIGINS=https://YOUR_USERNAME.github.io npm run ai:bridge
 
 ## Useful Signal Intelligence
 
+### Signal-Aware Safety Gate
+
+The safety gate now consumes signal features directly instead of relying only on text/protocol labels.
+
+Each decision includes weighted evidence from:
+
+- Domain: IR, Sub-GHz, NFC/RFID/iButton, GPIO, unknown.
+- Frequency band: 315 MHz, 390 MHz, 433 MHz, 868 MHz, 915 MHz, or exact MHz when outside common bands.
+- Protocol hints: safe consumer IR, sensor telemetry, rolling-code/security, credential/tag families.
+- Shannon entropy: field text entropy, raw timing/value entropy, and hex-byte entropy.
+- Timing shape: raw value count, min/max/average, standard deviation, unique ratio, and sign alternation ratio.
+- User intent: clone, bypass, unlock, replay, transmit, badge, key fob, etc.
+- Authorized Lab Mode scope.
+
+Frequency alone never decides. It is weighted context. For example:
+
+- `433 MHz + Oregon/weather terms` becomes passive sensor/caution.
+- `433 MHz + unknown RAW` stays explain-only/passive.
+- `315 MHz + KeeLoq + key-fob/replay intent` becomes blocked.
+- `IR + NEC/Samsung/Sony` becomes allowed.
+
+The UI shows a `Why this decision?` panel with safe/caution/blocked scores and every evidence item that contributed to the gate result.
+
 ### Capture Fingerprinting
 
 Every analyzed capture gets a deterministic fingerprint:
@@ -244,6 +267,7 @@ Every analyzed capture gets a deterministic fingerprint:
 - Protocol/device evidence.
 - Frequency band and modulation/preset summary.
 - Raw pulse/value statistics when available.
+- Shannon entropy metrics used by the safety gate.
 - Safety warnings.
 
 The fingerprint is intentionally conservative. A frequency band alone cannot classify a capture as safe or blocked; stronger protocol, text, and safety-gate evidence are required.

@@ -1,5 +1,16 @@
 import { parseFlipperCapture } from "./flipperParser";
-import type { AnalysisResult, ParsedCapture, SafetyDecision, SafetyFinding, SafetyLevel } from "./types";
+import { extractSignalFeatures } from "./signalFeatures";
+import type {
+  AnalysisResult,
+  GateEvidence,
+  GateEvidenceSource,
+  GateScore,
+  ParsedCapture,
+  SafetyDecision,
+  SafetyFinding,
+  SafetyLevel,
+  SignalFeatureSummary,
+} from "./types";
 
 export interface LabAuthorizationOptions {
   enabled: boolean;
@@ -94,6 +105,16 @@ function addFinding(
   findings.push({ level, title, detail, matched });
 }
 
+function addEvidence(
+  evidence: GateEvidence[],
+  source: GateEvidenceSource,
+  level: SafetyLevel,
+  weight: number,
+  message: string,
+) {
+  evidence.push({ source, level, weight: Number(weight.toFixed(2)), message });
+}
+
 function strongestLevel(findings: SafetyFinding[], fallback: SafetyLevel): SafetyLevel {
   if (findings.some((finding) => finding.level === "blocked")) return "blocked";
   if (findings.some((finding) => finding.level === "caution")) return "caution";
@@ -105,6 +126,25 @@ function decisionFor(level: SafetyLevel): SafetyDecision {
   if (level === "blocked") return "blocked";
   if (level === "caution" || level === "unknown") return "explain-only";
   return "allow";
+}
+
+function scoreGateEvidence(evidence: GateEvidence[]): GateScore {
+  return evidence.reduce(
+    (score, item) => {
+      if (item.level === "safe") score.safe += item.weight;
+      if (item.level === "caution" || item.level === "unknown") score.caution += item.weight;
+      if (item.level === "blocked") score.blocked += item.weight;
+      return score;
+    },
+    { safe: 0, caution: 0, blocked: 0 },
+  );
+}
+
+function levelFromGateScore(score: GateScore): SafetyLevel {
+  if (score.blocked >= 2.0) return "blocked";
+  if (score.caution >= 0.75) return "caution";
+  if (score.safe >= 0.85 && score.caution < 0.75) return "safe";
+  return "unknown";
 }
 
 function describeFrequency(hz: number) {
@@ -119,6 +159,123 @@ function summarizeParsed(parsed: ParsedCapture) {
   if (parsed.frequencies.length) bits.push(`frequency: ${parsed.frequencies.map(describeFrequency).join(", ")}`);
   if (parsed.names.length) bits.push(`named signals: ${parsed.names.slice(0, 4).join(", ")}`);
   return `${bits.join("; ")}.`;
+}
+
+function protocolText(parsed: ParsedCapture) {
+  return parsed.protocols.map((protocol) => normalize(protocol)).join(" ");
+}
+
+function buildSignalGateEvidence(
+  parsed: ParsedCapture,
+  text: string,
+  features: SignalFeatureSummary,
+): GateEvidence[] {
+  const evidence: GateEvidence[] = [];
+  const protocols = protocolText(parsed);
+  const lower = normalize(text);
+
+  if (parsed.domain === "infrared") {
+    addEvidence(evidence, "domain", "safe", 0.35, "Capture domain is infrared, which is usually suitable for owned consumer remote workflows.");
+  }
+
+  if (parsed.domain === "subghz") {
+    addEvidence(evidence, "domain", "caution", 0.35, "Capture domain is Sub-GHz RF, so the gate starts conservative until protocol and intent are clearer.");
+  }
+
+  if (parsed.domain === "nfc" || parsed.domain === "rfid" || parsed.domain === "ibutton") {
+    addEvidence(evidence, "domain", "caution", 0.55, "Tag/credential-capable domains require caution until the tag family and purpose are clear.");
+  }
+
+  if (parsed.domain === "gpio") {
+    addEvidence(evidence, "domain", "safe", 0.45, "GPIO/lab notes are allowed when voltage, ownership, and pin direction are documented.");
+  }
+
+  if (features.primaryFrequencyHz) {
+    const band = features.primaryFrequencyBand;
+    if (band.includes("315") || band.includes("390")) {
+      addEvidence(evidence, "frequency", "caution", 0.45, `${band} is commonly used by remotes and security-like devices. Frequency alone does not block or allow.`);
+    } else if (band.includes("433") || band.includes("868") || band.includes("915")) {
+      addEvidence(evidence, "frequency", "caution", 0.25, `${band} is a mixed ISM band used by harmless sensors and riskier remotes. Frequency alone does not decide.`);
+    } else {
+      addEvidence(evidence, "frequency", "unknown", 0.12, `${band} is not in SmolSignal's common band table.`);
+    }
+  }
+
+  if (parsed.domain === "infrared" && parsed.protocols.some((protocol) => SAFE_IR_PROTOCOLS.includes(protocol.toLowerCase()))) {
+    addEvidence(evidence, "protocol", "safe", 0.9, "Known parsed consumer IR protocol matched.");
+  }
+
+  if (/oregon|acurite|ambient|thermopro|lacrosse|weather|temperature|humidity|sensor/.test(`${protocols} ${lower}`)) {
+    addEvidence(evidence, "protocol", "caution", 0.35, "Sensor/telemetry hints matched; passive documentation is appropriate, transmit/replay is not generated.");
+  }
+
+  if (/keeloq|\bhcs\b|security\+|secplus|rolling code/.test(`${protocols} ${lower}`)) {
+    addEvidence(evidence, "protocol", "blocked", 2.3, "Rolling-code/security protocol indicators matched.");
+  }
+
+  if (/mifare classic|hid prox|iclass|seos|em4100|t5577|ibutton|dallas/.test(`${protocols} ${lower}`)) {
+    addEvidence(evidence, "protocol", "blocked", 2.1, "Access credential or clonable tag-family indicators matched.");
+  }
+
+  if (/clone|bypass|unlock|replay attack|car key|key fob|keyfob|badge|access control/.test(lower)) {
+    addEvidence(evidence, "intent", "blocked", 2.0, "User intent contains cloning, bypass, unlock, key-fob, badge, or access-control language.");
+  } else if (/replay|transmit|send/.test(lower) && parsed.domain === "subghz") {
+    addEvidence(evidence, "intent", "caution", 0.65, "User intent mentions transmit/replay-like action on RF; SmolSignal keeps unknown/security-like RF passive.");
+  }
+
+  const entropy = features.entropy;
+  if (entropy.rawTokenCount >= 12 && entropy.rawValueNormalizedEntropy >= 0.78) {
+    addEvidence(
+      evidence,
+      "entropy",
+      "caution",
+      0.45,
+      `Raw timing/value entropy is high (${entropy.rawValueNormalizedEntropy}); treat unknown RF as encoded/random-like until identified.`,
+    );
+  }
+
+  if (entropy.hexByteCount >= 8 && entropy.hexByteNormalizedEntropy >= 0.72 && parsed.domain !== "infrared") {
+    addEvidence(
+      evidence,
+      "entropy",
+      "caution",
+      0.35,
+      `Hex-byte entropy is elevated (${entropy.hexByteNormalizedEntropy}); this can indicate IDs, counters, keys, or encoded payloads, so keep workflows passive unless clearly safe.`,
+    );
+  }
+
+  if (features.timing && parsed.domain === "subghz") {
+    addEvidence(
+      evidence,
+      "timing",
+      "caution",
+      Math.min(0.55, 0.2 + features.timing.count / 100),
+      `Raw RF timing data detected (${features.timing.count} values, unique ratio ${features.timing.uniqueRatio}); raw RF remains passive unless clearly scoped to a harmless lab device.`,
+    );
+  }
+
+  return evidence;
+}
+
+function signalFindingFromEvidence(findings: SafetyFinding[], evidence: GateEvidence[], score: GateScore) {
+  if (score.blocked >= 2.0) {
+    addFinding(
+      findings,
+      "blocked",
+      "Signal-aware gate hard block",
+      "Frequency, protocol, entropy, timing, and/or intent evidence crossed the hard-block threshold.",
+    );
+    return;
+  }
+
+  if (score.caution >= 0.75) {
+    const details = evidence
+      .filter((item) => item.level === "caution" || item.level === "unknown")
+      .map((item) => item.message)
+      .slice(0, 2)
+      .join(" ");
+    addFinding(findings, "caution", "Signal-aware gate caution", details || "Signal features require passive handling.");
+  }
 }
 
 function domainFinding(parsed: ParsedCapture, text: string, findings: SafetyFinding[]) {
@@ -373,10 +530,25 @@ function makeNextSteps(parsed: ParsedCapture, level: SafetyLevel, lab?: Analysis
 export function analyzeCapture(content: string, fileName?: string, userGoal = "", labOptions?: LabAuthorizationOptions): AnalysisResult {
   const parsed = parseFlipperCapture(content, fileName);
   const text = combinedText(parsed, userGoal);
+  const signalFeatures = extractSignalFeatures(parsed);
+  const gateEvidence = buildSignalGateEvidence(parsed, text, signalFeatures);
+  if (labOptions?.enabled && labOptions.scope.trim().length >= 12) {
+    addEvidence(
+      gateEvidence,
+      "lab_scope",
+      "safe",
+      0.85,
+      "Authorized Lab Mode scope notes are present; this can upgrade only non-blocked captures into richer lab documentation workflows.",
+    );
+  } else if (labOptions?.enabled) {
+    addEvidence(gateEvidence, "lab_scope", "caution", 0.35, "Authorized Lab Mode was enabled, but scope notes are too short to affect the decision.");
+  }
+  const gateScore = scoreGateEvidence(gateEvidence);
   const findings: SafetyFinding[] = [];
 
   domainFinding(parsed, text, findings);
   highRiskFindings(text, findings);
+  signalFindingFromEvidence(findings, gateEvidence, gateScore);
 
   const lab = labContext(labOptions);
   const labEligible = isLabEligible(labOptions) && !hasHardBlock(findings);
@@ -394,7 +566,9 @@ export function analyzeCapture(content: string, fileName?: string, userGoal = ""
     );
   }
 
-  const baseLevel = strongestLevel(findings, parsed.domain === "unknown" ? "unknown" : "caution");
+  const signalLevel = levelFromGateScore(gateScore);
+  const fallbackLevel = signalLevel === "unknown" ? (parsed.domain === "unknown" ? "unknown" : "caution") : signalLevel;
+  const baseLevel = strongestLevel(findings, fallbackLevel);
   const level = labEligible && baseLevel !== "blocked" ? "safe" : baseLevel;
   const decision = decisionFor(level);
   const actions = makeActions(parsed, level, labEligible ? lab : undefined);
@@ -406,6 +580,9 @@ export function analyzeCapture(content: string, fileName?: string, userGoal = ""
     summary: summarizeParsed(parsed),
     plainEnglish: makePlainEnglish(parsed, level, labEligible ? lab : undefined),
     findings,
+    gateEvidence,
+    gateScore,
+    signalFeatures,
     safeActions: actions.safeActions,
     blockedActions: actions.blockedActions,
     nextSteps: makeNextSteps(parsed, level, labEligible ? lab : undefined),

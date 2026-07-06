@@ -126,16 +126,23 @@ export function fingerprintAnalysis(analysis: AnalysisResult, userGoal = "", pho
   const category = chooseCategory(analysis, matches);
   const safety = safetyFor(analysis, matches);
   const confidence = confidenceFor(analysis, matches, category);
-  const rawValues = extractRawNumbers(analysis);
-  const stats = pulseStats(rawValues);
-  const fieldText = analysis.parsed.fieldEntries.map((entry) => `${entry.key}:${entry.value}`).join("|");
+  const stats = analysis.signalFeatures.timing
+    ? {
+        count: analysis.signalFeatures.timing.count,
+        min: analysis.signalFeatures.timing.min,
+        max: analysis.signalFeatures.timing.max,
+        average: analysis.signalFeatures.timing.average,
+      }
+    : undefined;
   const modulation = getField(analysis, "preset") || getField(analysis, "modulation") || "Not specified";
-  const frequencyBand = describeFrequencyBand(analysis.parsed.frequencies);
+  const frequencyBand = analysis.signalFeatures.primaryFrequencyBand;
   const signatureSeed = [
     analysis.parsed.domain,
     analysis.parsed.fileType,
     analysis.parsed.frequencies.map((frequency) => Math.round(frequency / 1000)).join(","),
     analysis.parsed.protocols.slice().sort().join(","),
+    analysis.signalFeatures.entropy.rawValueNormalizedEntropy,
+    analysis.signalFeatures.entropy.hexByteNormalizedEntropy,
     analysis.parsed.fieldEntries.length,
   ].join("|");
 
@@ -146,6 +153,9 @@ export function fingerprintAnalysis(analysis: AnalysisResult, userGoal = "", pho
   ];
 
   if (stats) evidence.push(`Raw/data fields contain ${stats.count} numeric timing/value tokens.`);
+  evidence.push(
+    `Gate entropy: field ${analysis.signalFeatures.entropy.fieldShannonBitsPerChar} bits/char, raw ${analysis.signalFeatures.entropy.rawValueNormalizedEntropy}, hex ${analysis.signalFeatures.entropy.hexByteNormalizedEntropy}.`,
+  );
   if (photo?.fileName) evidence.push(`Photo context attached: ${photo.fileName} (${photo.width}x${photo.height}).`);
 
   const warnings = [
@@ -169,7 +179,7 @@ export function fingerprintAnalysis(analysis: AnalysisResult, userGoal = "", pho
       protocols: analysis.parsed.protocols,
       modulation,
       rawPulseStats: stats,
-      fieldEntropy: entropyForText(fieldText),
+      fieldEntropy: analysis.signalFeatures.entropy.fieldShannonBitsPerChar,
       photoContext: photo ? `${photo.fileName}; ${photo.notes || "no notes"}` : undefined,
     },
     matches,

@@ -20,5 +20,6 @@ describe("reportExporter", () => {
     expect(JSON.parse(json).schema).toBe("smolsignal.analysis-report.v1");
     expect(json).not.toContain("12 ED 00 00");
     expect(json).toContain("redacted by SmolSignal report exporter");
+    expect(buildMarkdownReport(input)).toContain("Signal-Aware Gate Evidence");
   });
 });

@@ -507,8 +507,45 @@ export default function App() {
                       <span>Modulation</span>
                       <strong>{fingerprint.features.modulation}</strong>
                     </div>
+                    <div>
+                      <span>Field entropy</span>
+                      <strong>{analysis.signalFeatures.entropy.fieldShannonBitsPerChar} bits/char</strong>
+                    </div>
+                    <div>
+                      <span>Raw / hex entropy</span>
+                      <strong>
+                        {analysis.signalFeatures.entropy.rawValueNormalizedEntropy} / {analysis.signalFeatures.entropy.hexByteNormalizedEntropy}
+                      </strong>
+                    </div>
                   </>
                 ) : null}
+              </div>
+
+              <div className="gate-panel">
+                <div className="section-heading horizontal compact-heading">
+                  <div>
+                    <p className="eyebrow">Signal-aware gate</p>
+                    <h3>Why this decision?</h3>
+                  </div>
+                  <div className="score-pills">
+                    <span>safe {analysis.gateScore.safe.toFixed(2)}</span>
+                    <span>caution {analysis.gateScore.caution.toFixed(2)}</span>
+                    <span>blocked {analysis.gateScore.blocked.toFixed(2)}</span>
+                  </div>
+                </div>
+                <p className="muted">
+                  Frequency and entropy now feed the gate as weighted evidence. Frequency alone never decides; it only
+                  contributes context alongside protocol hints, timing shape, entropy, domain, intent, and lab scope.
+                </p>
+                <div className="gate-evidence-list">
+                  {analysis.gateEvidence.map((item) => (
+                    <div className={`gate-evidence gate-${item.level}`} key={`${item.source}-${item.level}-${item.message}`}>
+                      <span>{item.source}</span>
+                      <strong>{item.level} +{item.weight.toFixed(2)}</strong>
+                      <p>{item.message}</p>
+                    </div>
+                  ))}
+                </div>
               </div>
 
               {fingerprint ? (
